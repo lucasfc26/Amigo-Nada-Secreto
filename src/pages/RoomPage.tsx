@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/useAuth.ts";
 import { AuthForm } from "../components/AuthForm.tsx";
+import { ChristmasScene } from "../components/ChristmasScene.tsx";
 import { cleanDisplayName, displayNameError } from "../lib/account.ts";
 import {
   deleteRoom,
@@ -20,6 +21,14 @@ const roomPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}
 
 function personLabel(person: Pick<RoomMember, "displayName" | "login">): string {
   return person.displayName || person.login;
+}
+
+function SceneBanner() {
+  return (
+    <div className="overflow-hidden rounded-[28px] border border-tinsel/40 shadow-[0_30px_60px_-30px_rgba(0,0,0,0.8)]">
+      <ChristmasScene />
+    </div>
+  );
 }
 
 export function RoomPage() {
@@ -164,13 +173,16 @@ export function RoomPage() {
 
   if (!auth.configured) {
     return (
-      <section className={card}>
+      <>
+        <SceneBanner />
+        <section className={card}>
         <h1 className="font-display text-4xl leading-none">Convite</h1>
         <p className="rounded-2xl border border-gold bg-[#fff8ee] px-4 py-3 text-sm text-ink">
           Falta ligar o Supabase. Copie .env.example para .env e rode supabase/schema.sql.
         </p>
         <AuthForm mode="login" next={`/sala/${roomId}`} />
-      </section>
+        </section>
+      </>
     );
   }
 
@@ -202,7 +214,9 @@ export function RoomPage() {
   if (!profile || view.status === "guest") {
     const roomName = view.status === "guest" ? view.name : "esta sala";
     return (
-      <section className={card}>
+      <>
+        <SceneBanner />
+        <section className={card}>
         <span className="candy h-2 w-20 rounded-full" aria-hidden="true" />
         <div className="flex flex-col gap-1">
           <p className="text-sm font-semibold tracking-[0.16em] text-gold uppercase">Convite</p>
@@ -250,7 +264,8 @@ export function RoomPage() {
         ) : (
           <AuthForm mode="login" next={`/sala/${roomId}`} />
         )}
-      </section>
+        </section>
+      </>
     );
   }
 
@@ -266,7 +281,9 @@ export function RoomPage() {
   });
 
   return (
-    <section className={card}>
+    <>
+      <SceneBanner />
+      <section className={card}>
       <span className="candy h-2 w-20 rounded-full" aria-hidden="true" />
       <div className="flex flex-col gap-1">
         <p className="text-sm font-semibold tracking-[0.16em] text-gold uppercase">
@@ -433,6 +450,7 @@ export function RoomPage() {
           </button>
         </div>
       )}
-    </section>
+      </section>
+    </>
   );
 }
