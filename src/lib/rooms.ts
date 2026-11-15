@@ -156,6 +156,10 @@ export async function loadRoomView(roomId: string, userId: string | null): Promi
   if (membersResult.error) return { status: "error", message: translateError(membersResult.error.message) };
 
   const memberRows = membersResult.data ?? [];
+  if (!memberRows.some((member) => member.user_id === userId)) {
+    return { status: "guest", name: previewRow.name, drawn: previewRow.drawn };
+  }
+
   const ids = memberRows.map((member) => member.user_id);
   const profilesResult =
     ids.length === 0

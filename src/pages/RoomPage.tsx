@@ -209,7 +209,7 @@ export function RoomPage() {
           <h1 className="font-display text-4xl leading-none">{roomName}</h1>
           <p className="text-sm text-muted">
             {profile
-              ? "Informe a senha da sala para entrar no sorteio."
+              ? "Você ainda não entrou. Peça a senha para quem criou a sala."
               : "Entre na sua conta e depois informe a senha da sala."}
           </p>
         </div>
