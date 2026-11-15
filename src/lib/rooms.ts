@@ -1,4 +1,4 @@
-import { translateError } from "./account.ts";
+import { cleanDisplayName, displayNameError, translateError } from "./account.ts";
 import { supabase } from "./supabase.ts";
 
 export type RoomSummary = {
@@ -7,17 +7,20 @@ export type RoomSummary = {
   ownerId: string;
   drawnAt: string | null;
   createdAt: string;
+  joined: boolean;
 };
 
 export type RoomMember = {
   userId: string;
   login: string;
+  displayName: string;
   joinedAt: string;
 };
 
 export type SecretMatch = {
   userId: string;
   login: string;
+  displayName: string;
 };
 
 export type RoomView =
@@ -26,21 +29,8 @@ export type RoomView =
   | { status: "member"; room: RoomSummary; members: RoomMember[]; match: SecretMatch | null }
   | { status: "error"; message: string };
 
-type RoomRow = {
-  id: string;
-  name: string;
-  owner_id: string;
-  drawn_at: string | null;
-  created_at: string;
-};
-
 function setupError(): string {
   return "Configure o Supabase no arquivo .env antes de continuar.";
-}
-
-function asRoom(value: RoomRow | RoomRow[] | null): RoomRow | null {
-  if (Array.isArray(value)) return value[0] ?? null;
-  return value;
 }
 
 export async function createRoom(name: string, password: string): Promise<{ id: string } | { error: string }> {
@@ -80,6 +70,25 @@ export async function deleteRoom(roomId: string): Promise<string | null> {
   return null;
 }
 
+export async function updateDisplayName(name: string): Promise<string | null> {
+  const clean = cleanDisplayName(name);
+  const problem = displayNameError(clean);
+  if (problem) return problem;
+  if (!supabase) return setupError();
+
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) return "Faça login.";
+
+  const { data, error } = await supabase
+    .from("sort_profiles")
+    .update({ display_name: clean })
+    .eq("id", userData.user.id)
+    .select("id");
+  if (error) return translateError(error.message);
+  if (!data || data.length === 0) return "Não foi possível salvar o nome.";
+  return null;
+}
+
 export async function removeMember(roomId: string, userId: string): Promise<string | null> {
   if (!supabase) return setupError();
   const { data, error } = await supabase
@@ -93,25 +102,27 @@ export async function removeMember(roomId: string, userId: string): Promise<stri
   return null;
 }
 
-export async function loadMyRooms(userId: string): Promise<{ rooms: RoomSummary[]; error: string | null }> {
+export async function loadRooms(userId: string): Promise<{ rooms: RoomSummary[]; error: string | null }> {
   if (!supabase) return { rooms: [], error: setupError() };
-  const { data, error } = await supabase
-    .from("sort_room_members")
-    .select("sort_rooms(id, name, owner_id, drawn_at, created_at)")
-    .eq("user_id", userId);
-  if (error) return { rooms: [], error: translateError(error.message) };
 
-  const rooms = (data ?? [])
-    .map((row) => asRoom(row.sort_rooms as RoomRow | RoomRow[] | null))
-    .filter((room): room is RoomRow => room !== null)
-    .map((room) => ({
-      id: room.id,
-      name: room.name,
-      ownerId: room.owner_id,
-      drawnAt: room.drawn_at,
-      createdAt: room.created_at,
-    }))
-    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  const roomsResult = await supabase
+    .from("sort_rooms")
+    .select("id, name, owner_id, drawn_at, created_at")
+    .order("created_at", { ascending: false });
+  if (roomsResult.error) return { rooms: [], error: translateError(roomsResult.error.message) };
+
+  const memberResult = await supabase.from("sort_room_members").select("room_id").eq("user_id", userId);
+  if (memberResult.error) return { rooms: [], error: translateError(memberResult.error.message) };
+
+  const joined = new Set((memberResult.data ?? []).map((row) => row.room_id));
+  const rooms = (roomsResult.data ?? []).map((room) => ({
+    id: room.id,
+    name: room.name,
+    ownerId: room.owner_id,
+    drawnAt: room.drawn_at,
+    createdAt: room.created_at,
+    joined: joined.has(room.id),
+  }));
 
   return { rooms, error: null };
 }
@@ -149,15 +160,24 @@ export async function loadRoomView(roomId: string, userId: string | null): Promi
   const profilesResult =
     ids.length === 0
       ? { data: [], error: null }
-      : await supabase.from("sort_profiles").select("id, login").in("id", ids);
+      : await supabase.from("sort_profiles").select("id, login, display_name").in("id", ids);
   if (profilesResult.error) return { status: "error", message: translateError(profilesResult.error.message) };
 
-  const logins = new Map((profilesResult.data ?? []).map((profile) => [profile.id, profile.login]));
-  const members = memberRows.map((member) => ({
-    userId: member.user_id,
-    login: logins.get(member.user_id) ?? "alguém",
-    joinedAt: member.joined_at,
-  }));
+  const profiles = new Map(
+    (profilesResult.data ?? []).map((profile) => [
+      profile.id,
+      { login: profile.login, displayName: profile.display_name ?? "" },
+    ]),
+  );
+  const members = memberRows.map((member) => {
+    const profile = profiles.get(member.user_id);
+    return {
+      userId: member.user_id,
+      login: profile?.login ?? "alguém",
+      displayName: profile?.displayName ?? "",
+      joinedAt: member.joined_at,
+    };
+  });
 
   let match: SecretMatch | null = null;
   if (room.drawn_at) {
@@ -170,9 +190,11 @@ export async function loadRoomView(roomId: string, userId: string | null): Promi
     if (assignment.error) return { status: "error", message: translateError(assignment.error.message) };
     const receiverId = assignment.data?.receiver_id;
     if (receiverId) {
+      const profile = profiles.get(receiverId);
       match = {
         userId: receiverId,
-        login: logins.get(receiverId) ?? "alguém",
+        login: profile?.login ?? "alguém",
+        displayName: profile?.displayName ?? "",
       };
     }
   }
@@ -185,6 +207,7 @@ export async function loadRoomView(roomId: string, userId: string | null): Promi
       ownerId: room.owner_id,
       drawnAt: room.drawn_at,
       createdAt: room.created_at,
+      joined: true,
     },
     members,
     match,

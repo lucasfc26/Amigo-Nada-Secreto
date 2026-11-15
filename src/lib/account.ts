@@ -1,8 +1,12 @@
 const LOGIN_PATTERN = /^[a-z0-9_]{3,24}$/;
 const ROOM_PATH = /^\/sala\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+export function maskLogin(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 24);
+}
+
 export function normalizeLogin(value: string): string {
-  return value.trim().toLowerCase();
+  return maskLogin(value);
 }
 
 export function loginEmail(login: string): string {
@@ -35,6 +39,18 @@ export function roomNameError(name: string): string | null {
   return null;
 }
 
+export function cleanDisplayName(name: string): string {
+  return name.trim().replace(/\s+/g, " ");
+}
+
+export function displayNameError(name: string): string | null {
+  const clean = cleanDisplayName(name);
+  if (clean.length < 2 || clean.length > 40) {
+    return "O nome precisa ter entre 2 e 40 caracteres.";
+  }
+  return null;
+}
+
 export function safeRoomPath(value: string | null): string | null {
   if (!value || !ROOM_PATH.test(value)) return null;
   return value;
@@ -48,7 +64,7 @@ export function translateError(message: string): string {
     text.includes("user already exists") ||
     text.includes("duplicate key")
   ) {
-    return "Esse login já existe. Escolha outro.";
+    return "Esse nome de usuário já existe.";
   }
   if (text.includes("invalid login credentials") || text.includes("invalid credentials")) {
     return "Login ou senha incorretos.";

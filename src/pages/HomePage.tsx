@@ -3,7 +3,7 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/useAuth.ts";
 import { ChristmasScene } from "../components/ChristmasScene.tsx";
 import { roomNameError } from "../lib/account.ts";
-import { createRoom, loadMyRooms, type RoomSummary } from "../lib/rooms.ts";
+import { createRoom, loadRooms, type RoomSummary } from "../lib/rooms.ts";
 import { card, fieldClass, primaryButton } from "../ui.ts";
 
 export function HomePage() {
@@ -21,7 +21,7 @@ export function HomePage() {
   useEffect(() => {
     if (!auth.profile) return;
     let active = true;
-    void loadMyRooms(auth.profile.id).then((result) => {
+    void loadRooms(auth.profile.id).then((result) => {
       if (!active) return;
       setRooms(result.rooms);
       setListError(result.error);
@@ -61,8 +61,8 @@ export function HomePage() {
         <ChristmasScene />
       </div>
       <p className="max-w-2xl text-lg leading-relaxed text-frost">
-        Crie uma sala com senha e envie o link. Todo mundo que entrar aparece na lista. Quando você sortear, cada
-        pessoa vê só o próprio amigo secreto.
+        Crie uma sala com senha. Quem tiver conta vê todas as salas e entra pelo link ou pela lista. Quando você
+        sortear, cada pessoa vê só o próprio amigo secreto.
       </p>
       <section className={card}>
         <span className="candy h-2 w-20 rounded-full" aria-hidden="true" />
@@ -138,11 +138,11 @@ export function HomePage() {
           </button>
         </form>
         <div className="flex flex-col gap-3">
-          <h2 className="font-display text-3xl leading-none">Suas salas</h2>
+          <h2 className="font-display text-3xl leading-none">Salas</h2>
           {listError && <p className="text-sm font-semibold text-red-600">{listError}</p>}
           {rooms.length === 0 ? (
             <p className="rounded-2xl border border-dashed border-line px-4 py-6 text-sm text-muted">
-              Você ainda não entrou em nenhuma sala.
+              Ainda não há salas.
             </p>
           ) : (
             <ul className="flex flex-col gap-2">
@@ -156,7 +156,11 @@ export function HomePage() {
                       <span className="block truncate font-semibold">{room.name}</span>
                       <span className="text-sm text-muted">
                         {room.drawnAt ? "Sorteio feito" : "Aguardando sorteio"}
-                        {room.ownerId === auth.profile?.id ? " · Sua sala" : ""}
+                        {room.ownerId === auth.profile?.id
+                          ? " · Sua sala"
+                          : room.joined
+                            ? " · Você está nesta sala"
+                            : " · Entrar com a senha"}
                       </span>
                     </span>
                   </Link>

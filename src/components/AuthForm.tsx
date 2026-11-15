@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/useAuth.ts";
-import { safeRoomPath } from "../lib/account.ts";
+import { maskLogin, safeRoomPath } from "../lib/account.ts";
 import { fieldClass, primaryButton } from "../ui.ts";
 
 type AuthFormProps = {
@@ -54,9 +54,11 @@ export function AuthForm({ mode, next }: AuthFormProps) {
           autoCorrect="off"
           spellCheck={false}
           placeholder="seu nome"
-          onChange={(event) => setLogin(event.target.value)}
+          inputMode="text"
+          onChange={(event) => setLogin(maskLogin(event.target.value))}
           className={fieldClass(false)}
         />
+        <p className="text-sm text-muted">Letras, números e _. Sem espaço nem acento.</p>
       </div>
       <div className="flex flex-col gap-2">
         <label htmlFor="password" className="text-sm font-semibold">

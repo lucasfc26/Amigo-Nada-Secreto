@@ -3,6 +3,7 @@ import { createContext, useContext } from "react";
 export type Profile = {
   id: string;
   login: string;
+  displayName: string;
 };
 
 export type AuthContextValue = {
@@ -12,6 +13,7 @@ export type AuthContextValue = {
   signIn: (login: string, password: string) => Promise<string | null>;
   signUp: (login: string, password: string, confirm: string) => Promise<string | null>;
   signOut: () => Promise<void>;
+  noteDisplayName: (name: string) => void;
 };
 
 export const AuthContext = createContext<AuthContextValue | null>(null);

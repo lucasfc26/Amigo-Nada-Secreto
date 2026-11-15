@@ -1,10 +1,19 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { accountError, loginEmail, roomNameError, safeRoomPath, translateError } from "./account.ts";
+import {
+  accountError,
+  displayNameError,
+  loginEmail,
+  maskLogin,
+  roomNameError,
+  safeRoomPath,
+  translateError,
+} from "./account.ts";
 
 test("aceita login simples e rejeita senha diferente", () => {
   assert.equal(accountError({ login: "Ana", password: "segredo", confirm: "segredo" }), null);
   assert.equal(loginEmail(" Ana "), "ana@users.sorteador.app");
+  assert.equal(maskLogin(" Ana Maria! "), "anamaria");
   assert.match(
     accountError({ login: "Ana", password: "segredo", confirm: "outra" }) ?? "",
     /não são iguais/,
@@ -32,4 +41,10 @@ test("traduz os erros mais comuns", () => {
 test("o nome da sala tem limite", () => {
   assert.equal(roomNameError("  Natal da firma  "), null);
   assert.ok(roomNameError("a"));
+});
+
+test("o nome de exibição tem limite", () => {
+  assert.equal(displayNameError("  Ana Clara  "), null);
+  assert.match(displayNameError(" A ") ?? "", /entre 2 e 40/);
+  assert.match(displayNameError("   ") ?? "", /entre 2 e 40/);
 });

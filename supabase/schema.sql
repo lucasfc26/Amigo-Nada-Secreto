@@ -11,8 +11,20 @@ create extension if not exists pgcrypto with schema extensions;
 create table if not exists public.sort_profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   login text not null unique check (login ~ '^[a-z0-9_]{3,24}$'),
+  display_name text,
   created_at timestamptz not null default now()
 );
+
+alter table public.sort_profiles add column if not exists display_name text;
+
+do $$
+begin
+  alter table public.sort_profiles
+    add constraint sort_profiles_display_name_len
+    check (display_name is null or char_length(display_name) between 2 and 40);
+exception
+  when duplicate_object then null;
+end $$;
 
 create table if not exists public.sort_rooms (
   id uuid primary key default gen_random_uuid(),
@@ -236,13 +248,29 @@ begin
 end;
 $$;
 
+create or replace function public.sort_login_taken(candidate text)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.sort_profiles
+    where login = lower(trim(coalesce(candidate, '')))
+  );
+$$;
+
 revoke all on function public.sort_handle_new_user() from public, anon, authenticated;
+revoke all on function public.sort_login_taken(text) from public;
 revoke all on function public.sort_is_room_member(uuid) from public;
 revoke all on function public.sort_room_preview(uuid) from public;
 revoke all on function public.sort_create_room(text, text) from public;
 revoke all on function public.sort_join_room(uuid, text) from public;
 revoke all on function public.sort_draw_room(uuid) from public;
 
+grant execute on function public.sort_login_taken(text) to anon, authenticated;
 grant execute on function public.sort_is_room_member(uuid) to authenticated;
 grant execute on function public.sort_room_preview(uuid) to anon, authenticated;
 grant execute on function public.sort_create_room(text, text) to authenticated;
@@ -253,6 +281,14 @@ alter table public.sort_profiles enable row level security;
 alter table public.sort_rooms enable row level security;
 alter table public.sort_room_members enable row level security;
 alter table public.sort_assignments enable row level security;
+
+drop policy if exists sort_profiles_update_own on public.sort_profiles;
+create policy sort_profiles_update_own
+on public.sort_profiles
+for update
+to authenticated
+using (id = auth.uid())
+with check (id = auth.uid());
 
 drop policy if exists sort_profiles_select_shared on public.sort_profiles;
 create policy sort_profiles_select_shared
@@ -271,11 +307,12 @@ using (
 );
 
 drop policy if exists sort_rooms_select_member on public.sort_rooms;
-create policy sort_rooms_select_member
+drop policy if exists sort_rooms_select_all on public.sort_rooms;
+create policy sort_rooms_select_all
 on public.sort_rooms
 for select
 to authenticated
-using (public.sort_is_room_member(id));
+using (true);
 
 drop policy if exists sort_rooms_delete_owner on public.sort_rooms;
 create policy sort_rooms_delete_owner
@@ -319,12 +356,21 @@ revoke all on public.sort_rooms from anon, authenticated;
 revoke all on public.sort_room_members from anon, authenticated;
 revoke all on public.sort_assignments from anon, authenticated;
 
-grant select (id, login) on public.sort_profiles to authenticated;
+grant select (id, login, display_name) on public.sort_profiles to authenticated;
+grant update (display_name) on public.sort_profiles to authenticated;
 grant select (id, name, owner_id, drawn_at, created_at) on public.sort_rooms to authenticated;
 grant delete on public.sort_rooms to authenticated;
 grant select (room_id, user_id, joined_at) on public.sort_room_members to authenticated;
 grant delete on public.sort_room_members to authenticated;
 grant select (room_id, giver_id, receiver_id) on public.sort_assignments to authenticated;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.sort_profiles;
+exception
+  when duplicate_object then null;
+  when others then null;
+end $$;
 
 do $$
 begin

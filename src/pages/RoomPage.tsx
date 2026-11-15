@@ -2,18 +2,25 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/useAuth.ts";
 import { AuthForm } from "../components/AuthForm.tsx";
+import { cleanDisplayName, displayNameError } from "../lib/account.ts";
 import {
   deleteRoom,
   drawRoom,
   joinRoom,
   loadRoomView,
   removeMember,
+  updateDisplayName,
+  type RoomMember,
   type RoomView,
 } from "../lib/rooms.ts";
 import { supabase } from "../lib/supabase.ts";
 import { card, fieldClass, primaryButton, secondaryButton } from "../ui.ts";
 
 const roomPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function personLabel(person: Pick<RoomMember, "displayName" | "login">): string {
+  return person.displayName || person.login;
+}
 
 export function RoomPage() {
   const { roomId = "" } = useParams();
@@ -29,6 +36,8 @@ export function RoomPage() {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
+  const [nameAttempted, setNameAttempted] = useState(false);
   const validId = roomPattern.test(roomId);
   const inviteUrl = `${window.location.origin}/sala/${roomId}`;
 
@@ -55,6 +64,9 @@ export function RoomPage() {
         void reload();
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "sort_assignments", filter: `room_id=eq.${roomId}` }, () => {
+        void reload();
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "sort_profiles" }, () => {
         void reload();
       })
       .subscribe();
@@ -106,8 +118,8 @@ export function RoomPage() {
     navigate("/", { replace: true });
   }
 
-  async function excluirPessoa(userId: string, login: string) {
-    if (!window.confirm(`Remover ${login} da sala?`)) return;
+  async function excluirPessoa(userId: string, label: string) {
+    if (!window.confirm(`Remover ${label} da sala?`)) return;
     setPending(userId);
     const result = await removeMember(roomId, userId);
     setPending(null);
@@ -116,6 +128,23 @@ export function RoomPage() {
       return;
     }
     setError(null);
+    await reload();
+  }
+
+  async function salvarNome(name: string) {
+    setNameAttempted(true);
+    if (displayNameError(name)) return;
+    setPending("name");
+    const result = await updateDisplayName(name);
+    setPending(null);
+    if (result) {
+      setError(result);
+      return;
+    }
+    setError(null);
+    setNameAttempted(false);
+    setNameDraft(null);
+    auth.noteDisplayName(cleanDisplayName(name));
     await reload();
   }
 
@@ -169,7 +198,8 @@ export function RoomPage() {
     );
   }
 
-  if (!auth.profile || view.status === "guest") {
+  const profile = auth.profile;
+  if (!profile || view.status === "guest") {
     const roomName = view.status === "guest" ? view.name : "esta sala";
     return (
       <section className={card}>
@@ -178,14 +208,14 @@ export function RoomPage() {
           <p className="text-sm font-semibold tracking-[0.16em] text-gold uppercase">Convite</p>
           <h1 className="font-display text-4xl leading-none">{roomName}</h1>
           <p className="text-sm text-muted">
-            {auth.profile
+            {profile
               ? "Informe a senha da sala para entrar no sorteio."
               : "Entre na sua conta e depois informe a senha da sala."}
           </p>
         </div>
         {view.status === "guest" && view.drawn ? (
           <p className="text-sm font-semibold text-red-600">O sorteio desta sala já foi feito.</p>
-        ) : auth.profile ? (
+        ) : profile ? (
           <form
             className="flex flex-col gap-4"
             onSubmit={(event) => {
@@ -224,8 +254,11 @@ export function RoomPage() {
     );
   }
 
-  const owner = view.room.ownerId === auth.profile.id;
+  const owner = view.room.ownerId === profile.id;
   const drawn = view.room.drawnAt !== null;
+  const mine = view.members.find((member) => member.userId === profile.id);
+  const nameValue = nameDraft ?? mine?.displayName ?? "";
+  const nameProblem = nameAttempted || nameValue.length > 0 ? displayNameError(nameValue) : null;
   const ordered = [...view.members].sort((left, right) => {
     if (left.userId === view.room.ownerId) return -1;
     if (right.userId === view.room.ownerId) return 1;
@@ -273,7 +306,7 @@ export function RoomPage() {
 
       {drawn && view.match && (
         <p data-testid="my-draw" className="text-base font-semibold text-moss">
-          Você tirou {view.match.login}. Só você vê essa borda.
+          Você tirou {personLabel(view.match)}. Só você vê essa borda.
         </p>
       )}
       {drawn && !view.match && (
@@ -284,6 +317,44 @@ export function RoomPage() {
           Depois do sorteio, o seu amigo secreto fica com a borda colorida. O resultado dos outros continua escondido.
         </p>
       )}
+
+      <form
+        className="flex flex-col gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void salvarNome(nameValue);
+        }}
+      >
+        <label htmlFor="display-name" className="text-sm font-semibold">
+          Nome de exibição
+        </label>
+        <p className="text-sm text-muted">O login da conta continua {profile.login}.</p>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            id="display-name"
+            data-testid="display-name"
+            value={nameValue}
+            maxLength={40}
+            placeholder="Como você quer aparecer"
+            aria-invalid={Boolean(nameProblem)}
+            onChange={(event) => setNameDraft(event.target.value)}
+            className={fieldClass(Boolean(nameProblem))}
+          />
+          <button
+            type="submit"
+            data-testid="save-display-name"
+            className={`${secondaryButton} shrink-0`}
+            disabled={pending === "name"}
+          >
+            {pending === "name" ? "Salvando…" : "Salvar nome"}
+          </button>
+        </div>
+        {nameProblem && (
+          <p role="alert" className="text-base font-semibold text-red-600">
+            {nameProblem}
+          </p>
+        )}
+      </form>
 
       <ul className="flex flex-col gap-2" aria-label="Quem está na sala">
         {ordered.map((member) => {
@@ -300,7 +371,10 @@ export function RoomPage() {
                   : "flex items-center gap-3 rounded-2xl border border-line bg-paper px-3 py-2"
               }
             >
-              <span className="min-w-0 flex-1 break-words font-semibold">{member.login}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block break-words font-semibold">{personLabel(member)}</span>
+                {member.displayName && <span className="block text-sm text-muted">{member.login}</span>}
+              </span>
               {member.userId === view.room.ownerId && (
                 <span className="shrink-0 text-sm font-medium text-gold">Dono</span>
               )}
@@ -309,12 +383,12 @@ export function RoomPage() {
                   Seu sorteado
                 </span>
               )}
-              {owner && !drawn && member.userId !== auth.profile?.id && (
+              {owner && !drawn && member.userId !== profile.id && (
                 <button
                   type="button"
                   className="shrink-0 cursor-pointer rounded-full px-2 py-1 text-sm font-medium text-muted hover:text-ribbon disabled:opacity-40"
                   disabled={pending === member.userId}
-                  onClick={() => void excluirPessoa(member.userId, member.login)}
+                  onClick={() => void excluirPessoa(member.userId, personLabel(member))}
                 >
                   Remover
                 </button>

@@ -17,7 +17,9 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
       <span className="candy h-2 w-20 rounded-full" aria-hidden="true" />
       <div className="flex flex-col gap-1">
         <h1 className="font-display text-4xl leading-none">{mode === "login" ? "Entrar" : "Criar conta"}</h1>
-        <p className="text-sm text-muted">Só o login e a senha. O login é o seu nome no sorteio.</p>
+        <p className="text-sm text-muted">
+          Só o login e a senha. O nome que aparece na sala você escolhe lá dentro.
+        </p>
       </div>
       {!auth.configured && (
         <p className="rounded-2xl border border-gold bg-[#fff8ee] px-4 py-3 text-sm text-ink">

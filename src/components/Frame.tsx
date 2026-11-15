@@ -21,7 +21,9 @@ export function Frame({ children }: { children: ReactNode }) {
         </Link>
         {auth.profile ? (
           <div className="flex items-center gap-3 text-sm">
-            <span className="max-w-32 truncate text-frost">{auth.profile.login}</span>
+            <span className="max-w-32 truncate text-frost">
+              {auth.profile.displayName || auth.profile.login}
+            </span>
             <button
               type="button"
               className="cursor-pointer font-semibold text-tinsel"

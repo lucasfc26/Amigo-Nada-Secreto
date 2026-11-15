@@ -36,16 +36,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let active = true;
     void supabase
       .from("sort_profiles")
-      .select("id, login")
+      .select("id, login, display_name")
       .eq("id", userId)
       .maybeSingle()
       .then(({ data }) => {
         if (!active) return;
         if (data) {
-          setStoredProfile({ id: data.id, login: data.login });
+          setStoredProfile({
+            id: data.id,
+            login: data.login,
+            displayName: data.display_name ?? "",
+          });
           return;
         }
-        setStoredProfile({ id: userId, login: "você" });
+        setStoredProfile({ id: userId, login: "você", displayName: "" });
       });
 
     return () => {
@@ -71,6 +75,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!supabase) return "Configure o Supabase no arquivo .env antes de criar a conta.";
 
     const normalized = normalizeLogin(login);
+    const taken = await supabase.rpc("sort_login_taken", { candidate: normalized });
+    if (taken.error) return translateError(taken.error.message);
+    if (taken.data === true) return "Esse nome de usuário já existe.";
+
     const { data, error } = await supabase.auth.signUp({
       email: loginEmail(normalized),
       password,
@@ -88,6 +96,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   }, []);
 
+  const noteDisplayName = useCallback((name: string) => {
+    setStoredProfile((current) => (current ? { ...current, displayName: name } : current));
+  }, []);
+
   const value = useMemo(
     () => ({
       configured: supabaseConfigured,
@@ -96,8 +108,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signIn,
       signUp,
       signOut,
+      noteDisplayName,
     }),
-    [loading, profile, signIn, signUp, signOut],
+    [loading, noteDisplayName, profile, signIn, signUp, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
